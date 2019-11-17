@@ -49,14 +49,13 @@ func run() {
 		}
 	}
 	for _, validPkg := range validExistedPkgs {
-		fmt.Printf("Start to scan pkg %s\n", validPkg)
 		total = total + listAndStorePkgPaths(validPkg)
 	}
 	end := time.Now()
 	duration := end.Sub(start)
 	fmt.Print("\n\n")
 	fmt.Printf("File Scan completed, there are %d files need to migrate.\n", total)
-	fmt.Printf("Time consumed: %d seconds\n", duration.Nanoseconds()/(10^9))
+	fmt.Printf("Time consumed: %f seconds\n", duration.Seconds())
 
 	storeTotal(total)
 }

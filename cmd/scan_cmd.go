@@ -48,8 +48,23 @@ func run() {
 			validExistedPkgs = append(validExistedPkgs, pkg)
 		}
 	}
+	t := make(chan int32)
+	count := 0
 	for _, validPkg := range validExistedPkgs {
-		total = total + listAndStorePkgPaths(validPkg)
+		go func(pkg string) {
+			fmt.Printf("List for pkg %s started.\n", pkg)
+			totalPkg := listAndStorePkgPaths(pkg)
+			t <- totalPkg
+			fmt.Printf("List for pkg %s ended.\n", pkg)
+		}(validPkg)
+	}
+	for to := range t {
+		total = total + to
+		if count == len(validExistedPkgs)-1 {
+			close(t)
+			break
+		}
+		count++
 	}
 	end := time.Now()
 	duration := end.Sub(start)
@@ -107,7 +122,7 @@ func listAndStorePkgPaths(pkg string) int32 {
 	todoPrefix := TodoFilesDir + "-" + pkg
 	fmt.Printf("Start to scan package %s for files\n", pkg)
 	filePaths := make([]string, 0)
-	var batchNum int32 = 0
+	var batchNum int16 = 0
 	var totalNum int32 = 0
 	listFunc := func(path string, info os.FileInfo, err error) error {
 		if info.Mode().IsRegular() {
@@ -130,7 +145,7 @@ func listAndStorePkgPaths(pkg string) int32 {
 	return totalNum
 }
 
-func storeBatchToFile(filePaths []string, prefix string, batch int32) {
+func storeBatchToFile(filePaths []string, prefix string, batch int16) {
 	batchFileName := fmt.Sprintf("%s-batch-%d.txt", prefix, batch)
 	batchFilePath := path.Join(workDir, TodoFilesDir, batchFileName)
 	fmt.Printf("Start to store paths for batch %d to file %s\n", batch, batchFileName)

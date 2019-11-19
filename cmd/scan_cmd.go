@@ -6,12 +6,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 )
 
-var baseDir, workDir string
+var baseDir, workDir, filterPattern string
 var batchSize int32
 
 var scanCmd = &cobra.Command{
@@ -27,6 +29,7 @@ func init() {
 	scanCmd.Flags().StringVarP(&baseDir, "base", "b", "/opt/indy/var/lib/indy/storage", "Base dir of storage for all indy artifacts.")
 	scanCmd.Flags().StringVarP(&workDir, "workdir", "w", "./", "Work dir to store all generated working files.")
 	scanCmd.Flags().Int32VarP(&batchSize, "batch", "B", 50000, "Batch of paths to process each time.")
+	scanCmd.Flags().StringVarP(&filterPattern, "filter", "f", "", "")
 }
 
 func run() {
@@ -50,10 +53,11 @@ func run() {
 	}
 	t := make(chan int32)
 	count := 0
+	filterFile := strings.TrimSpace(filterPattern) != ""
 	for _, validPkg := range validExistedPkgs {
 		go func(pkg string) {
 			fmt.Printf("List for pkg %s started.\n", pkg)
-			totalPkg := listAndStorePkgPaths(pkg)
+			totalPkg := listAndStorePkgPaths(pkg, filterFile)
 			t <- totalPkg
 			fmt.Printf("List for pkg %s ended.\n", pkg)
 		}(validPkg)
@@ -78,6 +82,7 @@ func run() {
 func printCurrentParams() {
 	fmt.Printf("Working dir for whole migration process: %s\n", workDir)
 	fmt.Printf("Base storage dir for artifacts: %s\n", baseDir)
+	fmt.Printf("Batch of paths to process each time: %d\n\n", batchSize)
 	fmt.Printf("Batch of paths to process each time: %d\n\n", batchSize)
 }
 
@@ -118,7 +123,7 @@ func createDirs(path string) error {
 	return os.MkdirAll(path, os.ModeDir|os.ModePerm)
 }
 
-func listAndStorePkgPaths(pkg string) int32 {
+func listAndStorePkgPaths(pkg string, filterFile bool) int32 {
 	todoPrefix := TodoFilesDir + "-" + pkg
 	fmt.Printf("Start to scan package %s for files\n", pkg)
 	filePaths := make([]string, 0)
@@ -126,7 +131,15 @@ func listAndStorePkgPaths(pkg string) int32 {
 	var totalNum int32 = 0
 	listFunc := func(path string, info os.FileInfo, err error) error {
 		if info.Mode().IsRegular() {
-			filePaths = append(filePaths, path)
+			if filterFile {
+				matched, _ := regexp.MatchString(filterPattern, filepath.Base(path))
+				if !matched {
+					filePaths = append(filePaths, path)
+				}
+			} else {
+				filePaths = append(filePaths, path)
+			}
+
 			if int32(len(filePaths)) >= batchSize {
 				storeBatchToFile(filePaths, todoPrefix, batchNum)
 				batchNum++
@@ -163,8 +176,8 @@ func storeBatchToFile(filePaths []string, prefix string, batch int16) {
 }
 
 func storeTotal(total int32) {
-	statusFilePath := path.Join(baseDir, "scan_status")
-	f, err := os.OpenFile(statusFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0744)
+	statusFilePath := path.Join(workDir, "scan_status")
+	f, err := os.OpenFile(statusFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0744)
 	defer f.Close()
 	if err == nil {
 		datawriter := bufio.NewWriter(f)
